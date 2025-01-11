@@ -4,40 +4,35 @@ import React, { useRef, useEffect, useState } from 'react'
 import { Ball } from '../Ball'
 import { Cursor } from '../Cursor'
 import { ScoreEffect } from '../ScoreEffect'
+import { Keyboard } from '../Keyboard'
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ballRef = useRef<Ball>()
   const cursorRef = useRef<Cursor>()
+  const keyboardRef = useRef<Keyboard>()
   const [score, setScore] = useState(0)
   const [highScore, setHighScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
+  const [typedText, setTypedText] = useState("")
 
   // Remove cursorVelocityRef since it's not being used
   const lastCursorPosRef = useRef({ x: 0, y: 0 })
   const scoreEffectsRef = useRef<ScoreEffect[]>([])
+
+  // Change lastHitKey from state to ref
+  const lastHitKeyRef = useRef<string | null>(null)
 
   // Update dimensions function to handle portrait mode for mobile
   const updateDimensions = () => {
     if (typeof window !== 'undefined') {
       const width = window.innerWidth
       const height = window.innerHeight
-      const isMobile = width <= 768 // Standard mobile breakpoint
-
-      if (isMobile) {
-        // For mobile, use full width and leave more space for UI
-        setDimensions({
-          width: width,
-          height: height - 120 // Increased space for header and score
-        })
-      } else {
-        // For desktop, keep original dimensions
-        setDimensions({
-          width: Math.min(width, 800),
-          height: Math.min(height - 100, 600)
-        })
-      }
+      setDimensions({
+        width: Math.min(width, 800),
+        height: height - 100 // Leave some space for UI
+      })
     }
   }
 
@@ -55,18 +50,27 @@ export default function Game() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Initialize game objects with current dimensions
+    // Initialize game objects
     if (!ballRef.current) {
-      ballRef.current = new Ball(dimensions.width / 2, dimensions.height / 2, 
-        Math.min(dimensions.width, dimensions.height) * 0.033) // Responsive ball size
+      ballRef.current = new Ball(
+        dimensions.width / 2, 
+        dimensions.height / 2,
+        Math.min(dimensions.width, dimensions.height) * 0.033,
+        dimensions.width,
+        dimensions.height
+      )
     }
     if (!cursorRef.current) {
       cursorRef.current = new Cursor(dimensions.width / 2, dimensions.height / 2, 
-        Math.min(dimensions.width, dimensions.height) * 0.067) // Responsive cursor size
+        Math.min(dimensions.width, dimensions.height) * 0.067)
+    }
+    if (!keyboardRef.current) {
+      keyboardRef.current = new Keyboard(dimensions.width, dimensions.height)
     }
 
     const ball = ballRef.current
     const cursor = cursorRef.current
+    const keyboard = keyboardRef.current
 
     // Handle both mouse and touch events
     const handlePointerMove = (clientX: number, clientY: number) => {
@@ -96,37 +100,43 @@ export default function Game() {
     const render = () => {
       ctx.clearRect(0, 0, dimensions.width, dimensions.height)
 
-      // Update ball with current dimensions
-      ball.updateBounds(dimensions.width, dimensions.height)
-      const collisionPoint = ball.update()
-      if (collisionPoint) {
-        const margin = 30
-        const x = collisionPoint.x === 0 ? margin : 
-                 collisionPoint.x === dimensions.width ? dimensions.width - margin : 
-                 collisionPoint.x
-        const y = collisionPoint.y === 0 ? margin : collisionPoint.y
+      // Draw white background for the whole play area
+      ctx.save()
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, dimensions.width, dimensions.height)
+      ctx.restore()
 
-        scoreEffectsRef.current.push(
-          new ScoreEffect(
-            x, 
-            y, 
-            `+${collisionPoint.points}`, // Just show the points
-            collisionPoint.points > 5 ? "#ff4d4d" : "#22c55e"
-          )
-        )
-        setScore(prevScore => prevScore + collisionPoint.points)
+      // Draw keyboard
+      keyboard.draw(ctx)
+
+      // Update ball and check if it hit the ground
+      const hitGround = ball.update()
+      if (hitGround) {
+        // Create new ball from top center
+        ball.reset(dimensions.width / 2, dimensions.height / 2)
+        // Reset lastHitKey when ball resets
+        lastHitKeyRef.current = null
       }
 
-      // Update and draw score effects
-      scoreEffectsRef.current = scoreEffectsRef.current.filter(effect => {
-        const isAlive = effect.update()
-        if (isAlive) {
-          effect.draw(ctx)
+      // Check for keyboard collision
+      const hitKey = keyboard.checkCollision(ball.x, ball.y)
+      if (hitKey && hitKey !== lastHitKeyRef.current) {
+        if (hitKey === '⌫') {
+          // Handle delete key
+          setTypedText(prev => prev.slice(0, -1))
+        } else if (hitKey === '␣') {
+          // Handle space key
+          setTypedText(prev => prev + ' ')
+        } else {
+          // Handle regular keys
+          setTypedText(prev => prev + hitKey.toLowerCase())
         }
-        return isAlive
-      })
+        lastHitKeyRef.current = hitKey
+      } else if (!hitKey) {
+        lastHitKeyRef.current = null
+      }
 
-      // Collision detection
+      // Ball-shoe collision detection
       const dx = cursor.x - ball.x
       const dy = cursor.y - ball.y
       const distance = Math.sqrt(dx * dx + dy * dy)
@@ -141,35 +151,25 @@ export default function Game() {
         const baseSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
         const newSpeed = Math.max(baseSpeed, 8)
 
-        // Add cursor velocity to the bounce, with less emphasis on upward movement
+        // Add cursor velocity to the bounce
         const cursorSpeed = Math.sqrt(cursorVx * cursorVx + cursorVy * cursorVy)
-        const kickBoost = Math.min(cursorSpeed * 0.3, 10) // Reduced multiplier and cap
+        const kickBoost = Math.min(cursorSpeed * 0.3, 10)
         
-        // Less vertical boost for upward cursor movement
-        const verticalBoost = cursorVy < 0 ? kickBoost * 1.2 : kickBoost // Reduced multiplier
-
         const randomAngle = angle + (Math.random() - 0.5) * 0.3
-        ball.vx = -Math.cos(randomAngle) * newSpeed + cursorVx * 0.5 // Reduced velocity influence
-        ball.vy = -Math.sin(randomAngle) * newSpeed + cursorVy * 0.5 - verticalBoost // Reduced velocity influence
-
-        // Handle shoe hit sequence
-        ball.hitWithShoe()
-        setScore(prevScore => prevScore + 1)
+        ball.vx = -Math.cos(randomAngle) * newSpeed + cursorVx * 0.5
+        ball.vy = -Math.sin(randomAngle) * newSpeed + cursorVy * 0.5 - kickBoost
 
         // Prevent multiple collisions
         ball.y = cursor.y - cursor.radius - ball.radius
       }
 
+      // Update ball bounds when dimensions change
+      ball.updateBounds(dimensions.width, dimensions.height)
+
       // Update last cursor position
       lastCursorPosRef.current = { x: cursor.x, y: cursor.y }
 
-      // Update game over condition with current height
-      if (ball.y - ball.radius > dimensions.height) {
-        setGameOver(true)
-        ball.reset(dimensions.width / 2, dimensions.height / 2)
-        setScore(0)
-      }
-
+      // Draw game objects
       ball.draw(ctx)
       cursor.draw(ctx)
 
@@ -194,51 +194,22 @@ export default function Game() {
   }, [gameOver, score])
 
   return (
-    <div className={`${
-      dimensions.width <= 768 
-        ? "fixed inset-0 flex flex-col items-center bg-gray-100 overflow-hidden" 
-        : "flex flex-col items-center justify-center min-h-screen bg-gray-100"
-    }`}>
-      <h1 className={`font-bold ${
-        dimensions.width <= 768 
-          ? "text-2xl my-2"
-          : "text-3xl mb-4"
-      }`}>Keepy Uppy</h1>
-      <div className={
-        dimensions.width <= 768
-          ? "flex-1 w-full flex flex-col items-center"
-          : "bg-white p-4 rounded-lg shadow-md"
-      }>
-        <canvas
-          ref={canvasRef}
-          width={dimensions.width}
-          height={dimensions.height}
-          className={`cursor-none touch-none ${
-            dimensions.width <= 768
-              ? "border-0"
-              : "border border-gray-300"
-          }`}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="w-full max-w-2xl">
+        <input
+          type="text"
+          value={typedText}
+          onChange={(e) => setTypedText(e.target.value)}
+          className="w-full p-2 mb-4 border rounded"
+          placeholder="Your text will appear here..."
         />
-        <div className={
-          dimensions.width <= 768
-            ? "w-full bg-white px-4 py-2"
-            : "mt-4 text-center"
-        }>
-          {gameOver && (
-            <p className={`text-red-500 ${
-              dimensions.width <= 768
-                ? "text-lg text-center"
-                : "text-xl mb-2"
-            }`}>Game Over!</p>
-          )}
-          <div className={
-            dimensions.width <= 768
-              ? "flex justify-between max-w-md mx-auto"
-              : "space-y-1"
-          }>
-            <p className="text-lg md:text-xl">Score: {score}</p>
-            <p className="text-lg md:text-xl">High Score: {highScore}</p>
-          </div>
+        <div className="bg-white p-4 rounded-lg shadow-md">
+          <canvas
+            ref={canvasRef}
+            width={dimensions.width}
+            height={dimensions.height}
+            className="cursor-none touch-none"
+          />
         </div>
       </div>
     </div>

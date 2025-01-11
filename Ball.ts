@@ -4,46 +4,15 @@ export class Ball {
   radius: number
   vx: number
   vy: number
-  private lastWallHit: number = 0
-  private justHitWall: boolean = false
-  private lastCeilingHit: number = 0
-  private comboCount: number = 0
-  private lastHitTime: number = 0
-  private readonly COMBO_TIMEOUT = 2000 // 2 seconds to maintain combo
-  private lastHitType: 'none' | 'wall' | 'shoe' = 'none'
-  private boundaryWidth: number = 800
-  private boundaryHeight: number = 600
+  private boundaryWidth: number
+  private boundaryHeight: number
 
-  constructor(x: number, y: number, radius: number) {
+  constructor(x: number, y: number, radius: number, width: number, height: number) {
     this.x = x
     this.y = y
     this.radius = radius
     this.vx = Math.random() * 4 - 2 // Random initial horizontal velocity
     this.vy = -5 // Initial upward velocity
-  }
-
-  resetCombo() {
-    this.comboCount = 0
-    this.lastHitTime = 0
-    this.lastHitType = 'none'
-  }
-
-  hitWithShoe() {
-    const now = Date.now()
-    if (now - this.lastHitTime > this.COMBO_TIMEOUT) {
-      this.resetCombo()
-    } else if (this.lastHitType === 'wall') {
-      // Valid sequence: continuing the shoe-wall pattern
-      this.lastHitType = 'shoe'
-    } else {
-      // Invalid sequence: shoe hit after shoe or first hit
-      this.resetCombo()
-      this.lastHitType = 'shoe'
-    }
-    this.lastHitTime = now
-  }
-
-  updateBounds(width: number, height: number) {
     this.boundaryWidth = width
     this.boundaryHeight = height
   }
@@ -57,51 +26,30 @@ export class Ball {
     this.vx *= 0.99
     this.vy *= 0.99
 
-    const now = Date.now()
-    let collisionPoint = null
-
-    // Reset combo if too much time has passed
-    if (now - this.lastHitTime > this.COMBO_TIMEOUT) {
-      this.resetCombo()
+    // Wall collisions
+    if (this.x - this.radius < 0) {
+      this.x = this.radius
+      this.vx = -this.vx * 0.8 // Bounce with some energy loss
+    }
+    if (this.x + this.radius > this.boundaryWidth) {
+      this.x = this.boundaryWidth - this.radius
+      this.vx = -this.vx * 0.8
+    }
+    if (this.y - this.radius < 0) {
+      this.y = this.radius
+      this.vy = -this.vy * 0.8
     }
 
-    // Wall collisions with dynamic boundaries
-    if (this.x - this.radius < 0 || this.x + this.radius > this.boundaryWidth || this.y - this.radius < 0) {
-      // Handle wall collision
-      if (this.x - this.radius < 0) {
-        this.x = this.radius
-        this.vx = -this.vx * 0.8
-      } else if (this.x + this.radius > this.boundaryWidth) {
-        this.x = this.boundaryWidth - this.radius
-        this.vx = -this.vx * 0.8
-      }
-      
-      if (this.y - this.radius < 0) {
-        this.y = this.radius
-        this.vy = -this.vy * 0.8
-      }
-
-      // Check if this wall hit is part of the valid sequence
-      if (this.lastHitType === 'shoe') {
-        this.comboCount = Math.min(this.comboCount + 1, 10)
-        this.lastHitType = 'wall'
-        this.lastHitTime = now
-
-        // Return collision point with current combo points
-        collisionPoint = {
-          x: this.x,
-          y: this.y,
-          points: this.comboCount
-        }
-      } else {
-        // Invalid sequence: wall hit after wall or first hit
-        this.resetCombo()
-        this.lastHitType = 'wall'
-        this.lastHitTime = now
-      }
+    // Check if ball hit the ground
+    if (this.y + this.radius > this.boundaryHeight) {
+      return true // Signal that ball hit the ground
     }
+    return false
+  }
 
-    return collisionPoint
+  updateBounds(width: number, height: number) {
+    this.boundaryWidth = width
+    this.boundaryHeight = height
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -118,9 +66,6 @@ export class Ball {
     this.y = y
     this.vx = Math.random() * 4 - 2
     this.vy = -5
-    this.comboCount = 0
-    this.lastHitTime = 0
-    this.lastHitType = 'none'
   }
 }
 
