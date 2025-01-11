@@ -3,7 +3,6 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { Ball } from '../Ball'
 import { Cursor } from '../Cursor'
-import { ScoreEffect } from '../ScoreEffect'
 import { Keyboard } from '../Keyboard'
 
 export default function Game() {
@@ -11,17 +10,11 @@ export default function Game() {
   const ballRef = useRef<Ball>()
   const cursorRef = useRef<Cursor>()
   const keyboardRef = useRef<Keyboard>()
-  const [score, setScore] = useState(0)
-  const [highScore, setHighScore] = useState(0)
-  const [gameOver, setGameOver] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [typedText, setTypedText] = useState("")
 
-  // Remove cursorVelocityRef since it's not being used
+  // Remove unused states and refs
   const lastCursorPosRef = useRef({ x: 0, y: 0 })
-  const scoreEffectsRef = useRef<ScoreEffect[]>([])
-
-  // Change lastHitKey from state to ref
   const lastHitKeyRef = useRef<string | null>(null)
 
   // Update dimensions function to handle portrait mode for mobile
@@ -185,13 +178,6 @@ export default function Game() {
       canvas.removeEventListener('touchstart', handleTouchMove)
     }
   }, [dimensions]) // Add dimensions to dependencies
-
-  // Handle high score updates separately
-  useEffect(() => {
-    if (gameOver) {
-      setHighScore(prevHighScore => Math.max(prevHighScore, score))
-    }
-  }, [gameOver, score])
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
